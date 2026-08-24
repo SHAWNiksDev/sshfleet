@@ -15,12 +15,15 @@ close to zero.
 | Column | Source |
 | --- | --- |
 | STATE | connection outcome: online / unreachable / auth-error |
-| LOAD 1M | `/proc/loadavg` |
+| LOAD 1M | `/proc/loadavg`, coloured against the host's core count |
 | CPU | delta of `/proc/stat` counters between two polls |
 | MEM | `(MemTotal − MemAvailable) / MemTotal` from `/proc/meminfo` |
 | DISK / | use% of the root mountpoint via `df -kP /` |
 | UPTIME | `/proc/uptime` |
 | RTT | round-trip time of the probe command |
+
+CPU, MEM, DISK and LOAD turn yellow above `warn_pct` and red above
+`crit_pct` (configurable, defaults 70 / 88).
 
 Selecting a host opens a drill-down with the full metric set and a sparkline
 of load-1 history.
@@ -56,12 +59,17 @@ verify_hosts = true
 
 [[hosts]]
 name = "edge-fra-01"
-host = "198.51.100.10"
+host = "edge-fra-01"     # resolved through ~/.ssh/config, like `ssh edge-fra-01`
 
 [[hosts]]
-host = "db.internal.lan"
+host = "db.internal.lan" # or a plain address with explicit overrides
 port = 2222
 ```
+
+Host entries are resolved through your `~/.ssh/config` by default
+(`import_ssh_config = true`): aliases, `HostName`, `User`, `Port`,
+`IdentityFile` and even `ProxyJump` work exactly as they do for the plain
+`ssh` client. Anything set explicitly in `fleet.toml` wins.
 
 Then run:
 
@@ -100,13 +108,16 @@ visible.
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `user` | string | current user | SSH username fallback |
-| `port` | int | 22 | port fallback |
+| `port` | int | – | port fallback (unset = ssh config / 22) |
 | `interval` | float | 10 | seconds between poll cycles |
 | `timeout` | float | 8 | login/command timeout per host |
 | `max_concurrent` | int | 8 | simultaneous probes upper bound |
 | `identity_file` | path | – | private key fallback (`~` is expanded) |
 | `password` | string | – | password fallback (avoid; prefer keys/agent) |
 | `verify_hosts` | bool | true | check server keys against known_hosts |
+| `import_ssh_config` | bool | true | resolve hosts through `~/.ssh/config` |
+| `warn_pct` | float | 70 | yellow threshold for CPU/MEM/DISK/LOAD |
+| `crit_pct` | float | 88 | red threshold for CPU/MEM/DISK/LOAD |
 
 Every key can be overridden per host in `[[hosts]]`; only `host` itself is
 required, `name` defaults to the address and must be unique.

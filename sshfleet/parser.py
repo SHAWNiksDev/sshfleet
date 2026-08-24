@@ -28,6 +28,12 @@ def parse_probe_output(raw: str) -> ProbeData:
         cpu_times = _parse_stat(sections["cpu"])
     except KeyError as exc:
         raise ProbeParseError(f"missing section {exc.args[0]!r}") from exc
+
+    try:
+        cores: int | None = _parse_cores(sections.get("cores", ""))
+    except ProbeParseError:
+        cores = None
+
     return ProbeData(
         hostname=hostname,
         load1=load1,
@@ -37,6 +43,7 @@ def parse_probe_output(raw: str) -> ProbeData:
         mem_used_pct=mem_used_pct,
         disk_used_pct=disk_used_pct,
         uptime_days=uptime_days,
+        cores=cores,
     )
 
 
@@ -113,6 +120,17 @@ def _parse_uptime(block: str) -> float:
     if seconds < 0:
         raise ProbeParseError(f"negative uptime: {seconds}")
     return seconds / 86400
+
+
+def _parse_cores(block: str) -> int | None:
+    line = _first_line(block, "cores")
+    try:
+        cores = int(line.split()[0])
+    except (ValueError, IndexError) as exc:
+        raise ProbeParseError(f"malformed core count: {line[:40]}") from exc
+    if cores <= 0:
+        raise ProbeParseError(f"implausible core count: {cores}")
+    return cores
 
 
 def _parse_stat(block: str) -> CpuTimes:

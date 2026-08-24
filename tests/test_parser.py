@@ -14,6 +14,18 @@ def test_full_payload_parses_all_metrics() -> None:
     assert data.mem_used_pct == pytest.approx(50.0)
     assert data.disk_used_pct == pytest.approx(53.0)
     assert data.uptime_days == pytest.approx(4.0, abs=1e-3)
+    assert data.cores == 4
+
+
+def test_missing_cores_section_is_tolerated() -> None:
+    payload = probe_output(cores=None)
+    data = parse_probe_output(payload)
+    assert data.cores is None
+
+
+def test_garbage_cores_section_is_tolerated() -> None:
+    data = parse_probe_output(probe_output(cores=0))
+    assert data.cores is None
 
 
 def test_cpu_idle_includes_iowait() -> None:

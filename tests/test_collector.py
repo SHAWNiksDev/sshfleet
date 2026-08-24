@@ -11,8 +11,13 @@ from sshfleet.models import HostSpec, HostState
 from tests.conftest import FakeFactory, FakeProc, ScriptedConn, probe_output
 
 
-def spec(name: str = "h1", host: str | None = None, password: str | None = None) -> HostSpec:
-    return HostSpec(name=name, host=host or f"{name}.test", password=password)
+def spec(
+    name: str = "h1",
+    host: str | None = None,
+    password: str | None = None,
+    port: int | None = None,
+) -> HostSpec:
+    return HostSpec(name=name, host=host or f"{name}.test", password=password, port=port)
 
 
 def collector_with(conn: ScriptedConn, defaults: Defaults | None = None):
@@ -27,10 +32,11 @@ async def test_first_probe_reports_metrics_without_cpu_delta() -> None:
     result = await collector.probe(spec())
 
     assert result.data.hostname == "web-01"
+    assert result.data.cores == 4
     assert result.cpu_used_pct is None
     assert result.latency_ms >= 0.0
     assert conn.commands == [PROBE_COMMAND]
-    assert factory.kwargs_log == [{"host": spec().host, "port": 22, "login_timeout": 8.0}]
+    assert factory.kwargs_log == [{"host": spec().host, "login_timeout": 8.0}]
 
 
 async def test_second_probe_computes_cpu_usage() -> None:
@@ -163,6 +169,28 @@ async def test_kwargs_include_identity_and_known_hosts_policy(tmp_path) -> None:
     assert sent["client_keys"] == [str(key)]
     assert sent["known_hosts"] is None
     assert "password" not in sent
+    assert "config" not in sent
+
+
+async def test_ssh_config_paths_are_forwarded() -> None:
+    defaults = Defaults(ssh_config_paths=("/home/user/.ssh/config",))
+    conn = ScriptedConn(outcomes=[FakeProc(stdout=probe_output())])
+    factory = FakeFactory(conns={spec().host: conn})
+    collector = FleetCollector(defaults, connector=factory)
+
+    await collector.probe(spec())
+
+    assert factory.kwargs_log[0]["config"] == ["/home/user/.ssh/config"]
+
+
+async def test_explicit_port_is_sent_when_configured() -> None:
+    conn = ScriptedConn(outcomes=[FakeProc(stdout=probe_output())])
+    factory = FakeFactory(conns={spec().host: conn})
+    collector = FleetCollector(Defaults(), connector=factory)
+
+    await collector.probe(spec(port=2222))
+
+    assert factory.kwargs_log[0]["port"] == 2222
 
 
 async def test_password_passed_from_host_then_defaults() -> None:

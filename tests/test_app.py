@@ -99,14 +99,22 @@ async def test_sort_by_cpu_column_orders_rows() -> None:
 
         table = app.query_one(FleetTable)
         table.cursor_coordinate = (0, 3)  # CPU column
-        await pilot.press("s")
 
-        values = []
-        for row_index in range(table.row_count):
-            cell = table.get_cell_at((row_index, 3))
-            text = cell.plain if hasattr(cell, "plain") else str(cell)
-            values.append(-1.0 if text == "-" else float(text.rstrip("%")))
-        assert values == sorted(values)
+        def column_values() -> list[float]:
+            out = []
+            for row_index in range(table.row_count):
+                cell = table.get_cell_at((row_index, 3))
+                text = cell.plain if hasattr(cell, "plain") else str(cell)
+                out.append(-1.0 if text == "-" else float(text.rstrip("%")))
+            return out
+
+        await pilot.press("s")
+        assert "▲" in str(table.columns["cpu"].label)
+        assert column_values() == sorted(column_values())
+
+        await pilot.press("s")
+        assert "▼" in str(table.columns["cpu"].label)
+        assert column_values() == sorted(column_values(), reverse=True)
 
 
 async def test_quit_binding_exits_cleanly() -> None:

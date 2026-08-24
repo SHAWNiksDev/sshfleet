@@ -24,6 +24,7 @@ class _HostSim:
     mem_used_pct: float
     disk_used_pct: float
     uptime_days: float
+    cores: int = 4
     cpu_idle: float = 90_000.0
     cpu_busy: float = 10_000.0
     latency_ms: float = 20.0
@@ -50,6 +51,7 @@ class DemoProber:
                 mem_used_pct=rng.uniform(25, 85),
                 disk_used_pct=rng.uniform(20, 75),
                 uptime_days=rng.uniform(1, 400),
+                cores=rng.choice((2, 4, 8, 16)),
                 latency_ms=rng.uniform(8, 140),
             )
             for spec in self.hosts
@@ -93,6 +95,7 @@ class DemoProber:
                 mem_used_pct=sim.mem_used_pct,
                 disk_used_pct=sim.disk_used_pct,
                 uptime_days=sim.uptime_days,
+                cores=sim.cores,
             ),
             cpu_used_pct=current.used_pct_since(earlier),
             latency_ms=sim.latency_ms,

@@ -60,7 +60,10 @@ class FleetApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield FleetTable()
+        yield FleetTable(
+            warn_pct=self._settings.defaults.warn_pct,
+            crit_pct=self._settings.defaults.crit_pct,
+        )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -113,6 +116,7 @@ class FleetApp(App[None]):
             self._sort_column = column
             self._sort_reverse = False
         table.sort(column, key=sort_key_for(column), reverse=self._sort_reverse)
+        table.set_sort_indicator(column, self._sort_reverse)
 
     def action_host_details(self) -> None:
         name = self.query_one(FleetTable).selected_host()

@@ -97,8 +97,42 @@ def test_empty_password_rejected() -> None:
 
 def test_defaults_are_optional() -> None:
     settings = settings_from_mapping({"hosts": [{"host": "h1"}]})
-    assert settings.defaults.port == 22
+    assert settings.defaults.port is None
     assert settings.defaults.verify_hosts is True
+    assert settings.defaults.import_ssh_config is True
+
+
+def test_ssh_config_resolution(monkeypatch, tmp_path) -> None:
+    fake_home = tmp_path / "home"
+    ssh_dir = fake_home / ".ssh"
+    ssh_dir.mkdir(parents=True)
+    (ssh_dir / "config").write_text("Host a\n  HostName 10.0.0.1\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    enabled = settings_from_mapping({"hosts": [{"host": "a"}]})
+    assert enabled.defaults.ssh_config_paths == (str(ssh_dir / "config"),)
+
+    disabled = settings_from_mapping(
+        {"hosts": [{"host": "a"}], "defaults": {"import_ssh_config": False}}
+    )
+    assert disabled.defaults.ssh_config_paths == ()
+
+    monkeypatch.setenv("HOME", str(tmp_path / "empty"))
+    missing = settings_from_mapping({"hosts": [{"host": "a"}]})
+    assert missing.defaults.ssh_config_paths == ()
+
+
+def test_thresholds_validated() -> None:
+    ok = settings_from_mapping(
+        {"hosts": [{"host": "a"}], "defaults": {"warn_pct": 60, "crit_pct": 95}}
+    )
+    assert ok.defaults.warn_pct == 60.0 and ok.defaults.crit_pct == 95.0
+    with pytest.raises(ConfigError, match="crit_pct"):
+        settings_from_mapping(
+            {"hosts": [{"host": "a"}], "defaults": {"warn_pct": 90, "crit_pct": 90}}
+        )
+    with pytest.raises(ConfigError, match="warn_pct"):
+        settings_from_mapping({"hosts": [{"host": "a"}], "defaults": {"warn_pct": 101}})
 
 
 @pytest.mark.parametrize(

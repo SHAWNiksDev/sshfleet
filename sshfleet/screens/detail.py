@@ -56,8 +56,8 @@ class HostDetailScreen(ModalScreen[None]):
             return
 
         spec = view.spec
-        peer = f"{spec.host}:{spec.port}"
-        user = spec.user or "default keys"
+        peer = spec.host if spec.port is None else f"{spec.host}:{spec.port}"
+        user = spec.user or "ssh config / agent"
         self.query_one("#detail-title", Static).update(
             Text.assemble(
                 (self._host_name, "bold"),
@@ -92,7 +92,10 @@ class HostDetailScreen(ModalScreen[None]):
 
         data = success.data
         table.add_row("hostname", data.hostname)
-        table.add_row("load 1/5/15", f"{data.load1:.2f} / {data.load5:.2f} / {data.load15:.2f}")
+        load_cell = f"{data.load1:.2f} / {data.load5:.2f} / {data.load15:.2f}"
+        if data.cores:
+            load_cell += f"  ({data.load1 / data.cores * 100:.0f}% of {data.cores} cores)"
+        table.add_row("load 1/5/15", load_cell)
         table.add_row("cpu used", _colored_pct(success.cpu_used_pct))
         table.add_row("memory", _colored_pct(data.mem_used_pct))
         table.add_row("disk /", _colored_pct(data.disk_used_pct))

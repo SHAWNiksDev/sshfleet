@@ -7,6 +7,7 @@ from typing import Any
 
 from rich.text import Text
 from textual.widgets import DataTable
+from textual.widgets.data_table import ColumnKey
 
 from sshfleet.models import HostSpec, HostState, HostView
 
@@ -39,14 +40,24 @@ def fmt_uptime(days: float) -> str:
 
 
 class FleetTable(DataTable[Any]):
-    def __init__(self) -> None:
+    def __init__(self, warn_pct: float = 70.0, crit_pct: float = 88.0) -> None:
         super().__init__(id="fleet-table")
         self.cursor_type = "row"
         self.zebra_stripes = True
+        self._warn_pct = warn_pct
+        self._crit_pct = crit_pct
+        self._base_labels = dict(COLUMNS)
+        self._column_keys: dict[str, ColumnKey] = {}
 
     def setup(self) -> None:
         for key, label in COLUMNS:
-            self.add_column(label, key=key)
+            self._column_keys[key] = self.add_column(label, key=key)
+
+    def set_sort_indicator(self, column: str | None, reverse: bool) -> None:
+        for key, label in self._base_labels.items():
+            marker = " ▼" if key == column and reverse else " ▲" if key == column else ""
+            self.columns[self._column_keys[key]].label = Text(label + marker)
+        self.refresh()
 
     def add_host(self, spec: HostSpec) -> None:
         self.add_row(
@@ -78,10 +89,10 @@ class FleetTable(DataTable[Any]):
             data = success.data
             cells = {
                 "state": Text(view.state.value, style=_STATE_STYLES[view.state]),
-                "load1": f"{data.load1:.2f}",
-                "cpu": _fmt_pct(success.cpu_used_pct),
-                "mem": _fmt_pct(data.mem_used_pct),
-                "disk": _fmt_pct(data.disk_used_pct),
+                "load1": self._fmt_load(data.load1, data.cores),
+                "cpu": self._fmt_pct(success.cpu_used_pct),
+                "mem": self._fmt_pct(data.mem_used_pct),
+                "disk": self._fmt_pct(data.disk_used_pct),
                 "uptime": fmt_uptime(data.uptime_days),
                 "rtt": f"{success.latency_ms:.0f}ms",
             }
@@ -98,6 +109,24 @@ class FleetTable(DataTable[Any]):
             return None
         value = cell_key.row_key.value
         return str(value) if value is not None else None
+
+    def _fmt_load(self, load1: float, cores: int | None) -> Text:
+        text = f"{load1:.2f}"
+        if cores is None:
+            return Text(text)
+        return Text(text, style=self._style_for(load1 / cores * 100))
+
+    def _fmt_pct(self, value: float | None) -> Text | str:
+        if value is None:
+            return _DASH
+        return Text(f"{value:.0f}%", style=self._style_for(value))
+
+    def _style_for(self, pct: float) -> str:
+        if pct >= self._crit_pct:
+            return "bold red"
+        if pct >= self._warn_pct:
+            return "yellow"
+        return "green"
 
 
 def sort_key_for(column: str) -> Callable[[Any], Any]:
@@ -120,10 +149,3 @@ def sort_key_for(column: str) -> Callable[[Any], Any]:
             return -1.0
 
     return numeric
-
-
-def _fmt_pct(value: float | None) -> Text | str:
-    if value is None:
-        return _DASH
-    style = "green" if value < 70 else "yellow" if value < 88 else "bold red"
-    return Text(f"{value:.0f}%", style=style)

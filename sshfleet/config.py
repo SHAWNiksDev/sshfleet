@@ -18,13 +18,17 @@ class ConfigError(ValueError):
 @dataclass(frozen=True, slots=True)
 class Defaults:
     user: str | None = None
-    port: int = 22
+    port: int | None = None
     interval: float = 10.0
     timeout: float = 8.0
     max_concurrent: int = 8
     identity_file: Path | None = None
     password: str | None = field(default=None, repr=False)
     verify_hosts: bool = True
+    import_ssh_config: bool = True
+    warn_pct: float = 70.0
+    crit_pct: float = 88.0
+    ssh_config_paths: tuple[str, ...] = field(default=(), repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,9 +47,16 @@ class Settings:
                 identity_file=self.defaults.identity_file,
                 password=self.defaults.password,
                 verify_hosts=self.defaults.verify_hosts,
+                import_ssh_config=self.defaults.import_ssh_config,
+                warn_pct=self.defaults.warn_pct,
+                crit_pct=self.defaults.crit_pct,
+                ssh_config_paths=self.defaults.ssh_config_paths,
             ),
             hosts=self.hosts,
         )
+
+
+DEFAULT_SSH_CONFIG = Path("~/.ssh/config")
 
 
 DEFAULT_CONFIG_PATHS = (Path("fleet.toml"), Path("~/.config/sshfleet/fleet.toml"))
@@ -111,13 +122,18 @@ def _parse_defaults(table: Any) -> Defaults:
         "identity_file",
         "password",
         "verify_hosts",
+        "import_ssh_config",
+        "warn_pct",
+        "crit_pct",
     }
     unknown = set(data) - allowed
     if unknown:
         raise ConfigError(f"unknown [defaults] keys: {', '.join(sorted(unknown))}")
 
-    port = data.get("port", 22)
-    if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
+    port = data.get("port")
+    if port is not None and (
+        not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535
+    ):
         raise ConfigError(f"[defaults].port must be an integer in 1..65535, got {port!r}")
 
     interval = _positive_number(data, "interval", default=10.0)
@@ -141,6 +157,17 @@ def _parse_defaults(table: Any) -> Defaults:
     if not isinstance(verify_hosts, bool):
         raise ConfigError("[defaults].verify_hosts must be true or false")
 
+    import_ssh_config = data.get("import_ssh_config", True)
+    if not isinstance(import_ssh_config, bool):
+        raise ConfigError("[defaults].import_ssh_config must be true or false")
+
+    warn_pct = _threshold(data, "warn_pct", default=70.0)
+    crit_pct = _threshold(data, "crit_pct", default=88.0)
+    if crit_pct <= warn_pct:
+        raise ConfigError(
+            f"[defaults].crit_pct ({crit_pct}) must be greater than warn_pct ({warn_pct})"
+        )
+
     return Defaults(
         user=_optional_string(data, "user"),
         port=port,
@@ -150,7 +177,25 @@ def _parse_defaults(table: Any) -> Defaults:
         identity_file=Path(identity).expanduser() if identity else None,
         password=_optional_string(data, "password"),
         verify_hosts=verify_hosts,
+        import_ssh_config=import_ssh_config,
+        warn_pct=warn_pct,
+        crit_pct=crit_pct,
+        ssh_config_paths=_resolve_ssh_config_paths(import_ssh_config),
     )
+
+
+def _threshold(data: dict[str, Any], key: str, *, default: float) -> float:
+    value = data.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value <= 100:
+        raise ConfigError(f"[defaults].{key} must be a number in 0..100, got {value!r}")
+    return float(value)
+
+
+def _resolve_ssh_config_paths(enabled: bool) -> tuple[str, ...]:
+    if not enabled:
+        return ()
+    path = DEFAULT_SSH_CONFIG.expanduser()
+    return (str(path),) if path.is_file() else ()
 
 
 def _optional_string(data: dict[str, Any], key: str) -> str | None:
@@ -189,7 +234,9 @@ def _parse_host(entry: Any, defaults: Defaults, index: int) -> HostSpec:
     name = name.strip() if isinstance(name, str) else name
 
     port = data.get("port", defaults.port)
-    if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
+    if port is not None and (
+        not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535
+    ):
         raise ConfigError(f"hosts[{index}]: port must be an integer in 1..65535")
 
     user = data.get("user", defaults.user)

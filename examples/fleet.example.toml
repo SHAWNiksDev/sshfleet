@@ -12,6 +12,15 @@ interval = 10        # seconds between poll cycles
 timeout = 8          # per-command timeout, also used as login timeout
 max_concurrent = 8   # upper bound of simultaneous probes
 
+# Colour thresholds (percent) for CPU / MEM / DISK / LOAD columns.
+warn_pct = 70
+crit_pct = 88
+
+# Resolve host entries through ~/.ssh/config, exactly like `ssh alias`:
+# aliases, HostName, User, Port, IdentityFile and ProxyJump all apply.
+# Hosts listed here without an explicit user/port/key fall back to it.
+import_ssh_config = true
+
 # Verify server host keys against ~/.ssh/known_hosts. Set false only on
 # trusted networks where servers are rebuilt frequently.
 verify_hosts = true
@@ -23,8 +32,9 @@ verify_hosts = true
 
 [[hosts]]
 name = "edge-fra-01"
-host = "198.51.100.10"
+host = "edge-fra-01"
 
+# Plain address without any ~/.ssh/config entry:
 [[hosts]]
 host = "app.internal.lan"
 user = "admin"

@@ -29,6 +29,7 @@ from sshfleet.parser import ProbeParseError, parse_probe_output
 PROBE_COMMAND = (
     "echo @@host; uname -n; "
     "echo @@load; cat /proc/loadavg; "
+    "echo @@cores; nproc 2>/dev/null || getconf _NPROCESSORS_ONLN; "
     "echo @@mem; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo; "
     "echo @@disk; df -kP /; "
     "echo @@up; cat /proc/uptime; "
@@ -141,7 +142,13 @@ class FleetCollector:
                 closer()
 
     def _connect_kwargs(self, spec: HostSpec) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {"host": spec.host, "port": spec.port}
+        # Anything left unset is deliberately omitted so that an OpenSSH
+        # config file (when imported) can fill in user, port and identities,
+        # exactly like the plain `ssh` client would.
+        kwargs: dict[str, Any] = {"host": spec.host}
+        port = spec.port if spec.port is not None else self._defaults.port
+        if port is not None:
+            kwargs["port"] = port
         user = spec.user or self._defaults.user
         if user:
             kwargs["username"] = user
@@ -151,6 +158,8 @@ class FleetCollector:
         password = spec.password or self._defaults.password
         if password:
             kwargs["password"] = password
+        if self._defaults.ssh_config_paths:
+            kwargs["config"] = list(self._defaults.ssh_config_paths)
         kwargs["login_timeout"] = self._defaults.timeout
         if not self._defaults.verify_hosts:
             kwargs["known_hosts"] = None

@@ -17,7 +17,7 @@ class HostSpec:
     name: str
     host: str
     user: str | None = None
-    port: int = 22
+    port: int | None = None
     identity_file: str | None = None
     password: str | None = field(default=None, repr=False)
 
@@ -46,6 +46,7 @@ class ProbeData:
     mem_used_pct: float
     disk_used_pct: float
     uptime_days: float
+    cores: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

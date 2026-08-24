@@ -20,6 +20,7 @@ def probe_output(
     cpu_idle: int = 8_123_456,
     cpu_total: int = 8_329_568,
     loadavg_text: str | None = None,
+    cores: int | None = 4,
 ) -> str:
     iowait = 45_678
     nice = 1_002
@@ -31,10 +32,12 @@ def probe_output(
     load_section = (
         loadavg_text if loadavg_text is not None else f"{loadavg[0]} {loadavg[1]} {loadavg[2]}"
     )
+    cores_section = "" if cores is None else f"@@cores\n{cores}\n"
     return (
         f"@@host\n{hostname}\n"
         f"@@load\n{load_section} 2/567 12345\n"
-        f"@@mem\nMemTotal:       {mem_total_kib} kB\n"
+        + cores_section
+        + f"@@mem\nMemTotal:       {mem_total_kib} kB\n"
         f"MemAvailable:   {mem_available_kib} kB\n"
         "@@disk\n"
         "Filesystem     1024-blocks      Used Available Capacity Mounted on\n"
