@@ -1,0 +1,55 @@
+FleetTable {
+    height: 100%;
+    border: round $primary;
+    background: $surface;
+    padding: 0 1;
+}
+
+Header {
+    background: $panel;
+}
+
+Footer {
+    background: $panel;
+}
+
+HostDetailScreen {
+    align: center middle;
+}
+
+#detail-box {
+    width: 76;
+    max-height: 92%;
+    border: round $accent;
+    background: $surface;
+    padding: 0 2;
+    layout: vertical;
+}
+
+#detail-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#detail-spark {
+    height: 6;
+    color: $success;
+    margin-bottom: 1;
+}
+
+#detail-error {
+    color: $error;
+    margin-top: 1;
+}
+
+HelpScreen {
+    align: center middle;
+}
+
+#help-box {
+    width: auto;
+    height: auto;
+    border: round $accent;
+    background: $surface;
+    padding: 1 3;
+}
