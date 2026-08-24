@@ -47,7 +47,7 @@ HelpScreen {
 }
 
 #help-box {
-    width: auto;
+    width: 64;
     height: auto;
     border: round $accent;
     background: $surface;

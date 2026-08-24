@@ -22,14 +22,18 @@ _KEYS: tuple[tuple[str, str], ...] = (
 )
 
 
+def build_table() -> RichTable:
+    table = RichTable.grid(padding=(0, 3))
+    table.add_column(style="bold cyan")
+    table.add_column()
+    for key, description in _KEYS:
+        table.add_row(key, description)
+    return table
+
+
 class HelpScreen(ModalScreen[None]):
     BINDINGS: ClassVar[list[BindingType]] = [Binding("escape,q,question_mark", "dismiss", "Close")]
 
     def compose(self) -> ComposeResult:
-        table = RichTable.grid(padding=(0, 3))
-        table.add_column(style="bold cyan")
-        table.add_column()
-        for key, description in _KEYS:
-            table.add_row(key, description)
         with Vertical(id="help-box"):
-            yield Static(table)
+            yield Static(build_table())

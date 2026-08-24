@@ -10,7 +10,7 @@ from sshfleet.config import Defaults, Settings
 from sshfleet.demo import DemoProber, demo_hosts
 from sshfleet.models import HostState
 from sshfleet.screens.detail import HostDetailScreen
-from sshfleet.screens.help import HelpScreen
+from sshfleet.screens.help import _KEYS, HelpScreen
 from sshfleet.widgets.fleet_table import FleetTable
 
 
@@ -83,6 +83,9 @@ async def test_help_overlay() -> None:
         await pilot.press("?")
         await pilot.pause()
         assert isinstance(app.screen, HelpScreen)
+        content = app.screen.query_one("HelpScreen Static")
+        assert content.region.width > 20, "help content must not collapse"
+        assert content.region.height == len(_KEYS)
         await pilot.press("escape")
         await pilot.pause()
         assert not isinstance(app.screen, HelpScreen)
