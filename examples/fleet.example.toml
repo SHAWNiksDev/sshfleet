@@ -1,0 +1,31 @@
+# SSHFleet fleet inventory example.
+# Copy to ./fleet.toml or ~/.config/sshfleet/fleet.toml and edit.
+
+[defaults]
+# Credentials used unless a host overrides them.
+user = "deploy"
+port = 22
+identity_file = "~/.ssh/id_ed25519"
+
+# Polling behaviour.
+interval = 10        # seconds between poll cycles
+timeout = 8          # per-command timeout, also used as login timeout
+max_concurrent = 8   # upper bound of simultaneous probes
+
+# Verify server host keys against ~/.ssh/known_hosts. Set false only on
+# trusted networks where servers are rebuilt frequently.
+verify_hosts = true
+
+[[hosts]]
+name = "edge-fra-01"
+host = "198.51.100.10"
+
+[[hosts]]
+host = "app.internal.lan"
+user = "admin"
+
+[[hosts]]
+name = "db-primary"
+host = "db.internal.lan"
+port = 2222
+identity_file = "~/.ssh/db_ed25519"
