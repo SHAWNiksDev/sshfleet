@@ -148,6 +148,9 @@ class FleetCollector:
         identity = spec.identity_file or self._defaults.identity_file
         if identity:
             kwargs["client_keys"] = [str(identity)]
+        password = spec.password or self._defaults.password
+        if password:
+            kwargs["password"] = password
         kwargs["login_timeout"] = self._defaults.timeout
         if not self._defaults.verify_hosts:
             kwargs["known_hosts"] = None

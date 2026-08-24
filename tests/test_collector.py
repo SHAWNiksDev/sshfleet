@@ -11,8 +11,8 @@ from sshfleet.models import HostSpec, HostState
 from tests.conftest import FakeFactory, FakeProc, ScriptedConn, probe_output
 
 
-def spec(name: str = "h1", host: str | None = None) -> HostSpec:
-    return HostSpec(name=name, host=host or f"{name}.test")
+def spec(name: str = "h1", host: str | None = None, password: str | None = None) -> HostSpec:
+    return HostSpec(name=name, host=host or f"{name}.test", password=password)
 
 
 def collector_with(conn: ScriptedConn, defaults: Defaults | None = None):
@@ -162,3 +162,16 @@ async def test_kwargs_include_identity_and_known_hosts_policy(tmp_path) -> None:
     assert sent["username"] == "ops"
     assert sent["client_keys"] == [str(key)]
     assert sent["known_hosts"] is None
+    assert "password" not in sent
+
+
+async def test_password_passed_from_host_then_defaults() -> None:
+    conn = ScriptedConn(outcomes=[FakeProc(stdout=probe_output())])
+    factory = FakeFactory(conns={spec().host: conn})
+    collector = FleetCollector(Defaults(password="fallback"), connector=factory)
+
+    await collector.probe(spec(name="h1", password="host-secret"))
+    await collector.probe(spec(name="h2", host=spec().host))
+
+    assert factory.kwargs_log[0]["password"] == "host-secret"
+    assert factory.kwargs_log[1]["password"] == "fallback"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 class HostState(enum.StrEnum):
@@ -19,6 +19,7 @@ class HostSpec:
     user: str | None = None
     port: int = 22
     identity_file: str | None = None
+    password: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)

@@ -16,6 +16,11 @@ max_concurrent = 8   # upper bound of simultaneous probes
 # trusted networks where servers are rebuilt frequently.
 verify_hosts = true
 
+# Password auth is supported but discouraged: it sits in this file as
+# plaintext, so prefer keys or an ssh-agent. If you must, restrict the file:
+#   chmod 600 fleet.toml
+# password = "s3cr3t"
+
 [[hosts]]
 name = "edge-fra-01"
 host = "198.51.100.10"
@@ -23,6 +28,12 @@ host = "198.51.100.10"
 [[hosts]]
 host = "app.internal.lan"
 user = "admin"
+
+[[hosts]]
+name = "legacy-nas"
+host = "nas.lan"
+user = "operator"
+password = "only-when-there-is-no-other-way"
 
 [[hosts]]
 name = "db-primary"

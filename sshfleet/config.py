@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,7 @@ class Defaults:
     timeout: float = 8.0
     max_concurrent: int = 8
     identity_file: Path | None = None
+    password: str | None = field(default=None, repr=False)
     verify_hosts: bool = True
 
 
@@ -40,6 +41,7 @@ class Settings:
                 timeout=self.defaults.timeout,
                 max_concurrent=self.defaults.max_concurrent,
                 identity_file=self.defaults.identity_file,
+                password=self.defaults.password,
                 verify_hosts=self.defaults.verify_hosts,
             ),
             hosts=self.hosts,
@@ -107,6 +109,7 @@ def _parse_defaults(table: Any) -> Defaults:
         "timeout",
         "max_concurrent",
         "identity_file",
+        "password",
         "verify_hosts",
     }
     unknown = set(data) - allowed
@@ -145,6 +148,7 @@ def _parse_defaults(table: Any) -> Defaults:
         timeout=timeout,
         max_concurrent=max_concurrent,
         identity_file=Path(identity).expanduser() if identity else None,
+        password=_optional_string(data, "password"),
         verify_hosts=verify_hosts,
     )
 
@@ -167,7 +171,7 @@ def _positive_number(data: dict[str, Any], key: str, *, default: float) -> float
 
 def _parse_host(entry: Any, defaults: Defaults, index: int) -> HostSpec:
     data = _require_table(entry, f"hosts[{index}]")
-    allowed = {"name", "host", "user", "port", "identity_file"}
+    allowed = {"name", "host", "user", "port", "identity_file", "password"}
     unknown = set(data) - allowed
     if unknown:
         raise ConfigError(f"hosts[{index}]: unknown keys {', '.join(sorted(unknown))}")
@@ -203,4 +207,15 @@ def _parse_host(entry: Any, defaults: Defaults, index: int) -> HostSpec:
     else:
         raise ConfigError(f"hosts[{index}]: 'identity_file' must be a string path")
 
-    return HostSpec(name=name, host=host, user=user, port=port, identity_file=identity_str)
+    password = data.get("password", defaults.password)
+    if password is not None and (not isinstance(password, str) or not password):
+        raise ConfigError(f"hosts[{index}]: 'password' must be a non-empty string when set")
+
+    return HostSpec(
+        name=name,
+        host=host,
+        user=user,
+        port=port,
+        identity_file=identity_str,
+        password=password,
+    )

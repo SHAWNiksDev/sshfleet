@@ -76,6 +76,25 @@ def test_identity_file_expands_tilde() -> None:
     assert "~" not in str(settings.defaults.identity_file)
 
 
+def test_password_defaults_and_overrides() -> None:
+    settings = settings_from_mapping(
+        {
+            "defaults": {"password": "shared-secret"},
+            "hosts": [{"host": "a"}, {"host": "b", "password": "own-secret"}],
+        }
+    )
+    assert settings.defaults.password == "shared-secret"
+    a, b = settings.hosts
+    assert a.password == "shared-secret"
+    assert b.password == "own-secret"
+    assert "shared-secret" not in repr(settings) and "shared-secret" not in repr(a)
+
+
+def test_empty_password_rejected() -> None:
+    with pytest.raises(ConfigError, match="'password'"):
+        settings_from_mapping({"hosts": [{"host": "a", "password": ""}]})
+
+
 def test_defaults_are_optional() -> None:
     settings = settings_from_mapping({"hosts": [{"host": "h1"}]})
     assert settings.defaults.port == 22

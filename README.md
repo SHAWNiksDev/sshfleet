@@ -105,10 +105,23 @@ visible.
 | `timeout` | float | 8 | login/command timeout per host |
 | `max_concurrent` | int | 8 | simultaneous probes upper bound |
 | `identity_file` | path | – | private key fallback (`~` is expanded) |
+| `password` | string | – | password fallback (avoid; prefer keys/agent) |
 | `verify_hosts` | bool | true | check server keys against known_hosts |
 
 Every key can be overridden per host in `[[hosts]]`; only `host` itself is
 required, `name` defaults to the address and must be unique.
+
+### Authentication
+
+SSHFleet authenticates exactly like your normal SSH client, in this order of
+preference:
+
+1. **SSH agent** — nothing to configure, just have `ssh-add` loaded.
+2. **Default keys** — `~/.ssh/id_ed25519`, `~/.ssh/id_rsa`, and friends.
+3. **Explicit key** — `identity_file` in `[defaults]` or per host.
+4. **Password** — set `password` in `[defaults]` or per host. Note it sits in
+   the TOML as plaintext, so `chmod 600 fleet.toml` and prefer the options
+   above whenever you can.
 
 ## How it works
 
