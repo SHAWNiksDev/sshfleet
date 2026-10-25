@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections import deque
 from collections.abc import Sequence
@@ -19,7 +20,7 @@ from sshfleet.config import Settings
 from sshfleet.models import HostSpec, HostState, HostView, ProbeResult, ProbeSuccess
 from sshfleet.screens.detail import HostDetailScreen
 from sshfleet.screens.help import HelpScreen
-from sshfleet.widgets.fleet_table import COLUMNS, FleetTable, sort_key_for
+from sshfleet.widgets.fleet_table import COLUMNS, FleetTable
 
 _HISTORY_LIMIT = 240
 
@@ -56,7 +57,7 @@ class FleetApp(App[None]):
         self._sort_column = "host"
         self._sort_reverse = False
         self._online_count = 0
-        self._close_task: asyncio.Task[None] | None = None
+        self._cycle_busy = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -73,14 +74,11 @@ class FleetApp(App[None]):
             table.add_host(view.spec)
         self.sub_title = f"{len(self._views)} hosts"
         self._poll_timer = self.set_interval(self._settings.defaults.interval, self.action_poll_now)
-        self._start_cycle()
+        self.action_poll_now()
 
-    def on_unmount(self) -> None:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        self._close_task = loop.create_task(self._prober.close())
+    async def on_unmount(self) -> None:
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(self._prober.close(), timeout=3.0)
 
     @property
     def paused(self) -> bool:
@@ -93,6 +91,10 @@ class FleetApp(App[None]):
         return tuple(self._history.get(name, ()))
 
     def action_poll_now(self) -> None:
+        # A cycle slower than the interval must not cancel itself mid-flight:
+        # skip the tick and let the running cycle finish instead.
+        if self._cycle_busy:
+            return
         self._start_cycle()
 
     def action_toggle_pause(self) -> None:
@@ -109,31 +111,53 @@ class FleetApp(App[None]):
         index = table.cursor_column
         if not 0 <= index < len(COLUMNS):
             return
-        column = COLUMNS[index][0]
+        self._sort_by_column(COLUMNS[index][0])
+
+    def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
+        column = str(event.column_key.value)
+        if column in dict(COLUMNS):
+            self._sort_by_column(column)
+            event.stop()
+
+    def _sort_by_column(self, column: str) -> None:
         if column == self._sort_column:
             self._sort_reverse = not self._sort_reverse
         else:
             self._sort_column = column
             self._sort_reverse = False
-        table.sort(column, key=sort_key_for(column), reverse=self._sort_reverse)
-        table.set_sort_indicator(column, self._sort_reverse)
+        self.query_one(FleetTable).sort_hosts(column, self._sort_reverse)
 
     def action_host_details(self) -> None:
         name = self.query_one(FleetTable).selected_host()
         if name and name in self._views:
-            self.push_screen(HostDetailScreen(self, name))
+            self.push_screen(self._detail_screen(name))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         name = event.row_key.value
         if name and name in self._views:
             event.stop()
-            self.push_screen(HostDetailScreen(self, str(name)))
+            self.push_screen(self._detail_screen(str(name)))
+
+    def _detail_screen(self, name: str) -> HostDetailScreen:
+        return HostDetailScreen(
+            self,
+            name,
+            warn_pct=self._settings.defaults.warn_pct,
+            crit_pct=self._settings.defaults.crit_pct,
+        )
 
     def action_help(self) -> None:
         self.push_screen(HelpScreen())
 
     @work(exclusive=True)
     async def _start_cycle(self) -> None:
+        self._cycle_busy = True
+        try:
+            await self._run_cycle()
+        finally:
+            self._cycle_busy = False
+
+    async def _run_cycle(self) -> None:
         views = list(self._views.values())
         for view in views:
             if view.state is not HostState.ONLINE:
@@ -147,9 +171,10 @@ class FleetApp(App[None]):
         stamped = time.time()
         online = 0
         for view, result in zip(views, results, strict=True):
+            # Last-known metrics are kept on failure: the state column reports
+            # the outage while the cells show stale values dimmed.
             if isinstance(result, BaseException):
                 view.state = HostState.UNREACHABLE
-                view.success = None
                 view.error = f"{type(result).__name__}: {result}"
                 view.updated_at = stamped
             elif isinstance(result, ProbeSuccess):
@@ -161,7 +186,6 @@ class FleetApp(App[None]):
                 online += 1
             else:
                 view.state = result.state
-                view.success = None
                 view.error = result.message
                 view.updated_at = stamped
             self.query_one(FleetTable).apply(view)

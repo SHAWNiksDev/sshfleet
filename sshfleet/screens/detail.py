@@ -33,10 +33,19 @@ class FleetStore(Protocol):
 class HostDetailScreen(ModalScreen[None]):
     BINDINGS: ClassVar[list[BindingType]] = [Binding("escape,q", "dismiss", "Back")]
 
-    def __init__(self, store: FleetStore, name: str) -> None:
+    def __init__(
+        self,
+        store: FleetStore,
+        name: str,
+        *,
+        warn_pct: float = 70.0,
+        crit_pct: float = 88.0,
+    ) -> None:
         super().__init__()
         self._store = store
         self._host_name = name
+        self._warn_pct = warn_pct
+        self._crit_pct = crit_pct
 
     def compose(self) -> ComposeResult:
         with Vertical(id="detail-box"):
@@ -96,19 +105,23 @@ class HostDetailScreen(ModalScreen[None]):
         if data.cores:
             load_cell += f"  ({data.load1 / data.cores * 100:.0f}% of {data.cores} cores)"
         table.add_row("load 1/5/15", load_cell)
-        table.add_row("cpu used", _colored_pct(success.cpu_used_pct))
-        table.add_row("memory", _colored_pct(data.mem_used_pct))
-        table.add_row("disk /", _colored_pct(data.disk_used_pct))
+        table.add_row("cpu used", self._colored_pct(success.cpu_used_pct))
+        table.add_row("memory", self._colored_pct(data.mem_used_pct))
+        table.add_row("disk /", self._colored_pct(data.disk_used_pct))
         table.add_row("uptime", _fmt_uptime_days(data.uptime_days))
         table.add_row("probe rtt", f"{success.latency_ms:.0f} ms")
         return table
 
-
-def _colored_pct(value: float | None) -> Text:
-    if value is None:
-        return Text("-", style="dim")
-    style = "green" if value < 70 else "yellow" if value < 88 else "bold red"
-    return Text(f"{value:.0f}%", style=style)
+    def _colored_pct(self, value: float | None) -> Text:
+        if value is None:
+            return Text("-", style="dim")
+        if value >= self._crit_pct:
+            style = "bold red"
+        elif value >= self._warn_pct:
+            style = "yellow"
+        else:
+            style = "green"
+        return Text(f"{value:.0f}%", style=style)
 
 
 def _fmt_uptime_days(days: float) -> str:

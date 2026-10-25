@@ -154,6 +154,34 @@ async def test_close_shuts_connections_down() -> None:
     assert conn.closed
 
 
+class WaitableConn:
+    def __init__(self) -> None:
+        self.closed = False
+        self.wait_closed_called = False
+
+    async def run(self, command: str) -> FakeProc:
+        return FakeProc(stdout=probe_output())
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        self.wait_closed_called = True
+
+
+async def test_close_waits_for_all_connections() -> None:
+    conns = {f"h{i}.test": WaitableConn() for i in range(3)}
+    factory = FakeFactory(conns=conns)
+    collector = FleetCollector(Defaults(), connector=factory)
+
+    for i in range(3):
+        await collector.probe(spec(f"h{i}", f"h{i}.test"))
+
+    await collector.close()
+
+    assert all(conn.closed and conn.wait_closed_called for conn in conns.values())
+
+
 async def test_kwargs_include_identity_and_known_hosts_policy(tmp_path) -> None:
     key = tmp_path / "id_test"
     key.write_text("key", encoding="utf-8")

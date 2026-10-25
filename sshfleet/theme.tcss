@@ -19,6 +19,7 @@ HostDetailScreen {
 
 #detail-box {
     width: 76;
+    max-width: 100%;
     max-height: 92%;
     border: round $accent;
     background: $surface;

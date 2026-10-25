@@ -97,6 +97,8 @@ visible.
 | `p` | pause / resume background polling |
 | `enter` | open detail view for the selected host |
 | `s` | sort by the column under the cursor (press again to flip direction) |
+| `←`/`→` | move the cursor between columns (to pick the sort column) |
+| click | a column header sorts by that column |
 | `?` | keymap overlay |
 | `esc` | close overlay |
 | `q` | quit |
@@ -140,7 +142,10 @@ Each cycle probes every host concurrently under a semaphore. The first
 successful contact reuses its connection for later cycles; a transport error
 triggers exactly one reconnect before the host flips to unreachable.
 Auth failures are never retried. CPU usage needs two samples, so the column
-fills in on the second poll after startup or reconnect.
+fills in on the second poll after startup or reconnect. A cycle slower than
+the configured interval is never cancelled mid-flight: overlapping ticks are
+skipped so results always land. When a host goes down, its last-known metrics
+stay visible, dimmed, while the STATE column reports the outage.
 
 ## Development
 

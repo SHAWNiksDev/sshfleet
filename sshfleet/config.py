@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -37,23 +37,7 @@ class Settings:
     hosts: tuple[HostSpec, ...]
 
     def with_interval(self, interval: float) -> Settings:
-        return Settings(
-            defaults=Defaults(
-                user=self.defaults.user,
-                port=self.defaults.port,
-                interval=interval,
-                timeout=self.defaults.timeout,
-                max_concurrent=self.defaults.max_concurrent,
-                identity_file=self.defaults.identity_file,
-                password=self.defaults.password,
-                verify_hosts=self.defaults.verify_hosts,
-                import_ssh_config=self.defaults.import_ssh_config,
-                warn_pct=self.defaults.warn_pct,
-                crit_pct=self.defaults.crit_pct,
-                ssh_config_paths=self.defaults.ssh_config_paths,
-            ),
-            hosts=self.hosts,
-        )
+        return Settings(defaults=replace(self.defaults, interval=interval), hosts=self.hosts)
 
 
 DEFAULT_SSH_CONFIG = Path("~/.ssh/config")
@@ -187,7 +171,7 @@ def _parse_defaults(table: Any) -> Defaults:
 def _threshold(data: dict[str, Any], key: str, *, default: float) -> float:
     value = data.get(key, default)
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value <= 100:
-        raise ConfigError(f"[defaults].{key} must be a number in 0..100, got {value!r}")
+        raise ConfigError(f"[defaults].{key} must be a number in (0, 100], got {value!r}")
     return float(value)
 
 

@@ -61,16 +61,18 @@ class FleetCollector:
 
     async def close(self) -> None:
         connections, self._connections = self._connections, {}
-        for name, conn in list(connections.items()):
+        for conn in connections.values():
             closer = getattr(conn, "close", None)
-            wait_closed = getattr(conn, "wait_closed", None)
-            try:
-                if callable(closer):
+            if callable(closer):
+                with contextlib.suppress(Exception):
                     closer()
-                if callable(wait_closed):
-                    await asyncio.shield(wait_closed())
-            except Exception:
-                del connections[name]
+        waiters: list[Awaitable[Any]] = []
+        for conn in connections.values():
+            wait_closed = getattr(conn, "wait_closed", None)
+            if callable(wait_closed):
+                waiters.append(wait_closed())
+        if waiters:
+            await asyncio.gather(*waiters, return_exceptions=True)
 
     async def _attempt(self, spec: HostSpec) -> ProbeFailure | None:
         """Prime a connection so auth problems surface before measurement."""
@@ -168,10 +170,12 @@ class FleetCollector:
 
 def _classify_group(group: ExceptionGroup) -> ProbeFailure:
     for exc in group.exceptions:
-        while isinstance(exc, ExceptionGroup):
+        while isinstance(exc, ExceptionGroup) and exc.exceptions:
             exc = exc.exceptions[0]
         if isinstance(exc, asyncssh.PermissionDenied):
             return ProbeFailure(HostState.AUTH_ERROR, str(exc).strip() or type(exc).__name__)
+    if not group.exceptions:
+        return ProbeFailure(HostState.UNREACHABLE, type(group).__name__)
     first = group.exceptions[0]
     return ProbeFailure(HostState.UNREACHABLE, str(first).strip() or type(first).__name__)
 

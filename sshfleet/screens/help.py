@@ -16,6 +16,8 @@ _KEYS: tuple[tuple[str, str], ...] = (
     ("p", "pause / resume background polling"),
     ("enter", "open detail view for selected host"),
     ("s", "sort by column under cursor (toggles direction)"),
+    ("←/→", "move the cursor between columns (for `s`)"),
+    ("click", "column header sorts by that column"),
     ("?", "this help"),
     ("esc", "close overlay"),
     ("q", "quit"),

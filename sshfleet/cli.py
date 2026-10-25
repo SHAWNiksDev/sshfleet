@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from collections.abc import Sequence
 
 from sshfleet import __version__
 from sshfleet.collector import FleetCollector
-from sshfleet.config import Defaults, Settings, load_settings, resolve_config_path
+from sshfleet.config import ConfigError, Defaults, Settings, load_settings, resolve_config_path
 from sshfleet.demo import DemoProber, demo_hosts
 
 
@@ -17,21 +18,22 @@ def build_parser() -> argparse.ArgumentParser:
         prog="sshfleet",
         description="Agentless async TUI dashboard for fleets of Linux servers over SSH.",
     )
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
         "-c",
         "--config",
         help="path to fleet.toml (default: ./fleet.toml or ~/.config/sshfleet/fleet.toml)",
+    )
+    source.add_argument(
+        "--demo",
+        action="store_true",
+        help="run against a synthetic fleet; no config or network needed",
     )
     parser.add_argument(
         "--interval",
         type=float,
         metavar="SECONDS",
         help="override the poll interval from the config",
-    )
-    parser.add_argument(
-        "--demo",
-        action="store_true",
-        help="run against a synthetic fleet; no config or network needed",
     )
     parser.add_argument("--seed", type=int, default=None, help="seed for --demo randomness")
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
@@ -42,11 +44,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.interval is not None and (math.isnan(args.interval) or args.interval <= 0):
+        parser.error("--interval must be a positive number of seconds")
+
     prober: FleetCollector | DemoProber
     if args.demo:
         hosts = demo_hosts()
         settings = Settings(
-            defaults=Defaults(interval=args.interval if args.interval else 5.0),
+            defaults=Defaults(interval=args.interval if args.interval is not None else 5.0),
             hosts=hosts,
         )
         prober = DemoProber(hosts, seed=args.seed)
@@ -60,7 +65,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        settings = load_settings(path)
+        try:
+            settings = load_settings(path)
+        except ConfigError as exc:
+            print(f"error: {path}: {exc}", file=sys.stderr)
+            return 2
         if args.interval is not None:
             settings = settings.with_interval(args.interval)
         prober = FleetCollector(settings.defaults)
