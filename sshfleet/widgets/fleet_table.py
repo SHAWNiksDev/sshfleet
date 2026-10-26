@@ -75,6 +75,12 @@ class FleetTable(DataTable[Any]):
         for key, label in COLUMNS:
             self._column_keys[key] = self.add_column(label, key=key)
 
+    def action_cursor_right(self) -> None:
+        self.move_cursor(column=self.cursor_column + 1)
+
+    def action_cursor_left(self) -> None:
+        self.move_cursor(column=self.cursor_column - 1)
+
     def set_sort_indicator(self, column: str | None, reverse: bool) -> None:
         for key, label in self._base_labels.items():
             marker = " ▼" if key == column and reverse else " ▲" if key == column else ""

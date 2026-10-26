@@ -61,6 +61,7 @@ class FleetCollector:
 
     async def close(self) -> None:
         connections, self._connections = self._connections, {}
+        self._prev_cpu.clear()
         for conn in connections.values():
             closer = getattr(conn, "close", None)
             if callable(closer):
@@ -130,11 +131,15 @@ class FleetCollector:
         existing = self._connections.get(spec.name)
         if existing is not None:
             return existing
-        connection = await self._connector(**self._connect_kwargs(spec))
+        # login_timeout only starts once the TCP connection is established.
+        connection = await asyncio.wait_for(
+            self._connector(**self._connect_kwargs(spec)), timeout=self._defaults.timeout
+        )
         self._connections[spec.name] = connection
         return connection
 
     async def _drop(self, name: str) -> None:
+        self._prev_cpu.pop(name, None)
         conn = self._connections.pop(name, None)
         if conn is None:
             return
@@ -160,7 +165,9 @@ class FleetCollector:
         password = spec.password or self._defaults.password
         if password:
             kwargs["password"] = password
-        if self._defaults.ssh_config_paths:
+        if not self._defaults.import_ssh_config:
+            kwargs["config"] = None
+        elif self._defaults.ssh_config_paths:
             kwargs["config"] = list(self._defaults.ssh_config_paths)
         kwargs["login_timeout"] = self._defaults.timeout
         if not self._defaults.verify_hosts:
@@ -169,15 +176,12 @@ class FleetCollector:
 
 
 def _classify_group(group: ExceptionGroup) -> ProbeFailure:
-    for exc in group.exceptions:
-        while isinstance(exc, ExceptionGroup) and exc.exceptions:
-            exc = exc.exceptions[0]
-        if isinstance(exc, asyncssh.PermissionDenied):
-            return ProbeFailure(HostState.AUTH_ERROR, str(exc).strip() or type(exc).__name__)
-    if not group.exceptions:
-        return ProbeFailure(HostState.UNREACHABLE, type(group).__name__)
-    first = group.exceptions[0]
-    return ProbeFailure(HostState.UNREACHABLE, str(first).strip() or type(first).__name__)
+    auth_errors = group.subgroup(asyncssh.PermissionDenied)
+    state = HostState.AUTH_ERROR if auth_errors else HostState.UNREACHABLE
+    first: Exception = auth_errors or group
+    while isinstance(first, ExceptionGroup):
+        first = first.exceptions[0]
+    return ProbeFailure(state, str(first).strip() or type(first).__name__)
 
 
 def _trim(text: str, limit: int = 160) -> str:

@@ -72,6 +72,7 @@ class FleetApp(App[None]):
         table.setup()
         for view in self._views.values():
             table.add_host(view.spec)
+        table.sort_hosts(self._sort_column, self._sort_reverse)
         self.sub_title = f"{len(self._views)} hosts"
         self._poll_timer = self.set_interval(self._settings.defaults.interval, self.action_poll_now)
         self.action_poll_now()
@@ -95,6 +96,7 @@ class FleetApp(App[None]):
         # skip the tick and let the running cycle finish instead.
         if self._cycle_busy:
             return
+        self._cycle_busy = True
         self._start_cycle()
 
     def action_toggle_pause(self) -> None:
@@ -151,22 +153,26 @@ class FleetApp(App[None]):
 
     @work(exclusive=True)
     async def _start_cycle(self) -> None:
-        self._cycle_busy = True
         try:
             await self._run_cycle()
         finally:
             self._cycle_busy = False
 
     async def _run_cycle(self) -> None:
+        if not self.is_running:
+            return
+        table = self.query_one(FleetTable)
         views = list(self._views.values())
         for view in views:
             if view.state is not HostState.ONLINE:
                 view.state = HostState.CONNECTING
-                self.query_one(FleetTable).apply(view)
+                table.apply(view)
 
         results = await asyncio.gather(
             *(self._prober.probe(v.spec) for v in views), return_exceptions=True
         )
+        if not table.is_attached:
+            return
 
         stamped = time.time()
         online = 0
@@ -188,7 +194,8 @@ class FleetApp(App[None]):
                 view.state = result.state
                 view.error = result.message
                 view.updated_at = stamped
-            self.query_one(FleetTable).apply(view)
+            table.apply(view)
+        table.sort_hosts(self._sort_column, self._sort_reverse)
         self._online_count = online
         self._refresh_sub_title()
 

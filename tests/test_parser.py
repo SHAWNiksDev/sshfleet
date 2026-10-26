@@ -64,3 +64,37 @@ def test_non_numeric_loadavg_fails() -> None:
     payload = probe_output(loadavg_text="high medium low")
     with pytest.raises(ProbeParseError, match="loadavg"):
         parse_probe_output(payload)
+
+
+def test_guest_cpu_time_is_not_counted_twice() -> None:
+    payload = probe_output().split("@@cpu\n")[0] + "@@cpu\ncpu 100 20 30 400 50 6 7 8 40 10\n"
+    data = parse_probe_output(payload)
+    assert data.cpu_times.total == 621
+    assert data.cpu_times.idle == 450
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-0.1"])
+def test_invalid_load_values_are_rejected(value: str) -> None:
+    with pytest.raises(ProbeParseError, match="loadavg"):
+        parse_probe_output(probe_output(loadavg_text=f"0.1 {value} 0.3"))
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-1", "broken"])
+def test_invalid_uptime_is_reported_as_parse_error(value: str) -> None:
+    payload = probe_output().replace("345600.25 1331200.10", f"{value} 1331200.10")
+    with pytest.raises(ProbeParseError, match="uptime"):
+        parse_probe_output(payload)
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_nonfinite_disk_usage_is_rejected(value: str) -> None:
+    payload = probe_output().replace("53% /", f"{value}% /")
+    with pytest.raises(ProbeParseError, match="df"):
+        parse_probe_output(payload)
+
+
+@pytest.mark.parametrize("line", ["cpu0 1 2 3 4", "cpu 1 2 3 -4"])
+def test_invalid_cpu_aggregate_is_rejected(line: str) -> None:
+    payload = probe_output().split("@@cpu\n")[0] + f"@@cpu\n{line}\n"
+    with pytest.raises(ProbeParseError, match=r"cpu|counter"):
+        parse_probe_output(payload)

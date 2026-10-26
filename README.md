@@ -103,6 +103,9 @@ visible.
 | `esc` | close overlay |
 | `q` | quit |
 
+The selected sort order is reapplied after every poll. The cursor stays on
+the same host when rows move.
+
 ## Configuration reference
 
 `[defaults]`
@@ -112,7 +115,7 @@ visible.
 | `user` | string | current user | SSH username fallback |
 | `port` | int | – | port fallback (unset = ssh config / 22) |
 | `interval` | float | 10 | seconds between poll cycles |
-| `timeout` | float | 8 | login/command timeout per host |
+| `timeout` | float | 8 | timeout for each connection attempt and probe command, in seconds |
 | `max_concurrent` | int | 8 | simultaneous probes upper bound |
 | `identity_file` | path | – | private key fallback (`~` is expanded) |
 | `password` | string | – | password fallback (avoid; prefer keys/agent) |
@@ -121,8 +124,11 @@ visible.
 | `warn_pct` | float | 70 | yellow threshold for CPU/MEM/DISK/LOAD |
 | `crit_pct` | float | 88 | red threshold for CPU/MEM/DISK/LOAD |
 
-Every key can be overridden per host in `[[hosts]]`; only `host` itself is
-required, `name` defaults to the address and must be unique.
+In `[[hosts]]`, `user`, `port`, `identity_file` and `password` override the
+defaults for that host. Only `host` is required; `name` defaults to the
+address and must be unique. Polling, concurrency, host verification, SSH
+config import and colour thresholds are fleet-wide settings in `[defaults]`.
+Intervals and timeouts must be finite positive numbers.
 
 ### Authentication
 

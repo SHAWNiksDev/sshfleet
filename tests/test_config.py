@@ -186,3 +186,21 @@ def test_with_interval_returns_updated_copy() -> None:
     settings = Settings(defaults=Defaults(), hosts=())
     assert settings.with_interval(2.5).defaults.interval == 2.5
     assert settings.defaults.interval == 10.0
+
+
+@pytest.mark.parametrize("key", ["interval", "timeout"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_durations_rejected(key: str, value: float) -> None:
+    with pytest.raises(ConfigError, match=key):
+        settings_from_mapping({"defaults": {key: value}, "hosts": [{"host": "a"}]})
+
+
+@pytest.mark.parametrize("contents", [None, b"\xff\xfe"])
+def test_unreadable_config_reports_config_error(tmp_path, contents: bytes | None) -> None:
+    target = tmp_path / "fleet.toml"
+    if contents is None:
+        target.mkdir()
+    else:
+        target.write_bytes(contents)
+    with pytest.raises(ConfigError, match=r"read|UTF-8"):
+        load_settings(target)

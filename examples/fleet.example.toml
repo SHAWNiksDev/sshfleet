@@ -9,7 +9,7 @@ identity_file = "~/.ssh/id_ed25519"
 
 # Polling behaviour.
 interval = 10        # seconds between poll cycles
-timeout = 8          # per-command timeout, also used as login timeout
+timeout = 8          # timeout for each connection attempt and probe command
 max_concurrent = 8   # upper bound of simultaneous probes
 
 # Colour thresholds (percent) for CPU / MEM / DISK / LOAD columns.

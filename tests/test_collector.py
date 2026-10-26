@@ -7,7 +7,7 @@ import pytest
 
 from sshfleet.collector import PROBE_COMMAND, FleetCollector
 from sshfleet.config import Defaults
-from sshfleet.models import HostSpec, HostState
+from sshfleet.models import HostSpec, HostState, ProbeFailure, ProbeSuccess
 from tests.conftest import FakeFactory, FakeProc, ScriptedConn, probe_output
 
 
@@ -231,3 +231,69 @@ async def test_password_passed_from_host_then_defaults() -> None:
 
     assert factory.kwargs_log[0]["password"] == "host-secret"
     assert factory.kwargs_log[1]["password"] == "fallback"
+
+
+async def test_reconnect_discards_previous_cpu_sample() -> None:
+    conn_a = ScriptedConn(outcomes=[FakeProc(stdout=probe_output()), OSError("reset")])
+    conn_b = ScriptedConn(
+        outcomes=[
+            FakeProc(stdout=probe_output(cpu_idle=8_153_456, cpu_total=8_369_568)),
+            FakeProc(stdout=probe_output(cpu_idle=8_183_456, cpu_total=8_409_568)),
+        ]
+    )
+    collector, factory = collector_with(conn_a)
+    await collector.probe(spec())
+    factory.conns[spec().host] = conn_b
+
+    first = await collector.probe(spec())
+    second = await collector.probe(spec())
+
+    assert isinstance(first, ProbeSuccess) and first.cpu_used_pct is None
+    assert isinstance(second, ProbeSuccess) and second.cpu_used_pct == pytest.approx(25)
+
+
+async def test_connect_timeout_covers_the_whole_connector() -> None:
+    cancelled = asyncio.Event()
+
+    async def stalled_connector(**kwargs):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    collector = FleetCollector(Defaults(timeout=0.01), connector=stalled_connector)
+    result = await asyncio.wait_for(collector.probe(spec()), timeout=1)
+    assert isinstance(result, ProbeFailure) and result.state is HostState.UNREACHABLE
+    assert cancelled.is_set()
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_ssh_config_import_controls_alias_resolution(enabled, monkeypatch, tmp_path) -> None:
+    ssh_dir = tmp_path / ".ssh"
+    ssh_dir.mkdir()
+    (ssh_dir / "config").write_text("Host h1.test\n  HostName redirected.test\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    resolved_hosts = []
+
+    async def resolve_options(config=(), **kwargs):
+        # connect() defaults to (), which loads ~/.ssh/config. The options
+        # constructor defaults to None, which skips it.
+        options = asyncssh.SSHClientConnectionOptions(config=config, client_keys=None, **kwargs)
+        resolved_hosts.append(options.host)
+        return ScriptedConn()
+
+    collector = FleetCollector(Defaults(import_ssh_config=enabled), connector=resolve_options)
+    await collector.probe(spec())
+    assert resolved_hosts == ["redirected.test" if enabled else spec().host]
+
+
+async def test_nested_auth_failure_is_classified_correctly() -> None:
+    async def fail(**kwargs):
+        raise ExceptionGroup(
+            "connection failed",
+            [ExceptionGroup("jump", [OSError("closed"), asyncssh.PermissionDenied("bad key")])],
+        )
+
+    collector = FleetCollector(Defaults(), connector=fail)
+    result = await collector.probe(spec())
+    assert isinstance(result, ProbeFailure) and result.state is HostState.AUTH_ERROR

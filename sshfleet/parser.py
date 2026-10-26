@@ -6,6 +6,8 @@ into labeled sections; every function here is pure and trivially testable.
 
 from __future__ import annotations
 
+import math
+
 from sshfleet.models import CpuTimes, ProbeData
 
 SECTION_PREFIX = "@@"
@@ -68,13 +70,20 @@ def _first_line(block: str, section: str) -> str:
 
 def _parse_loadavg(block: str) -> tuple[float, float, float]:
     parts = _first_line(block, "load").split()
-    try:
-        values = tuple(float(p) for p in parts[:3])
-    except ValueError as exc:
-        raise ProbeParseError(f"malformed loadavg: {parts[:3]}") from exc
-    if len(values) != 3:
-        raise ProbeParseError(f"loadavg needs 3 fields, got {len(values)}")
+    if len(parts) < 3:
+        raise ProbeParseError(f"loadavg needs 3 fields, got {len(parts)}")
+    values = [_nonnegative_float(p, "loadavg") for p in parts[:3]]
     return values[0], values[1], values[2]
+
+
+def _nonnegative_float(value: str, section: str) -> float:
+    try:
+        number = float(value)
+    except ValueError as exc:
+        raise ProbeParseError(f"malformed {section} value: {value!r}") from exc
+    if not math.isfinite(number) or number < 0:
+        raise ProbeParseError(f"invalid {section} value: {value!r}")
+    return number
 
 
 def _parse_meminfo(block: str) -> float:
@@ -107,18 +116,13 @@ def _parse_disk(block: str) -> float:
         raise ProbeParseError("df produced no data rows")
     for row in data_rows:
         if len(row) >= 6 and row[-1] == "/":
-            try:
-                pct = float(row[4].rstrip("%"))
-            except (ValueError, IndexError) as exc:
-                raise ProbeParseError(f"malformed df Use% field: {row}") from exc
+            pct = _nonnegative_float(row[4].rstrip("%"), "df Use%")
             return max(0.0, min(100.0, pct))
     raise ProbeParseError("no df row for mountpoint '/'")
 
 
 def _parse_uptime(block: str) -> float:
-    seconds = float(_first_line(block, "uptime").split()[0])
-    if seconds < 0:
-        raise ProbeParseError(f"negative uptime: {seconds}")
+    seconds = _nonnegative_float(_first_line(block, "uptime").split()[0], "uptime")
     return seconds / 86400
 
 
@@ -135,7 +139,7 @@ def _parse_cores(block: str) -> int | None:
 
 def _parse_stat(block: str) -> CpuTimes:
     line = _first_line(block, "cpu")
-    if not line.startswith("cpu"):
+    if line.split()[0] != "cpu":
         raise ProbeParseError(f"/proc/stat does not start with cpu aggregate: {line[:40]}")
     fields = line.split()[1:]
     try:
@@ -144,5 +148,8 @@ def _parse_stat(block: str) -> CpuTimes:
         raise ProbeParseError("non-numeric counters in /proc/stat") from exc
     if len(counters) < 4:
         raise ProbeParseError(f"expected >=4 cpu counters, got {len(counters)}")
+    if any(counter < 0 for counter in counters):
+        raise ProbeParseError("negative counters in /proc/stat")
     idle = counters[3] + (counters[4] if len(counters) > 4 else 0)
-    return CpuTimes(idle=idle, total=sum(counters))
+    # guest and guest_nice are already included in user and nice.
+    return CpuTimes(idle=idle, total=sum(counters[:8]))

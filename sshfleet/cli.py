@@ -44,8 +44,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.interval is not None and (math.isnan(args.interval) or args.interval <= 0):
-        parser.error("--interval must be a positive number of seconds")
+    if args.interval is not None and (not math.isfinite(args.interval) or args.interval <= 0):
+        parser.error("--interval must be a finite positive number of seconds")
 
     prober: FleetCollector | DemoProber
     if args.demo:

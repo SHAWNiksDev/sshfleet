@@ -29,11 +29,16 @@ def test_invalid_host_entry_reports_error(tmp_path, capsys) -> None:
     assert "unknown keys" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("interval", ["0", "-3", "nan"])
+@pytest.mark.parametrize("interval", ["0", "-3", "nan", "inf", "-inf"])
 def test_nonpositive_interval_rejected(interval: str) -> None:
     with pytest.raises(SystemExit) as excinfo:
-        main(["--interval", interval])
+        main([f"--interval={interval}"])
     assert excinfo.value.code == 2
+
+
+def test_directory_config_reports_error(tmp_path, capsys) -> None:
+    assert main(["--config", str(tmp_path)]) == 2
+    assert "error:" in capsys.readouterr().err
 
 
 def test_config_and_demo_are_mutually_exclusive() -> None:

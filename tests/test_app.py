@@ -321,3 +321,54 @@ def test_detail_screen_uses_configured_thresholds() -> None:
     assert screen._colored_pct(60).style == "yellow"
     assert screen._colored_pct(90).style == "bold red"
     assert screen._colored_pct(None).plain == "-"
+
+
+async def test_arrow_keys_choose_sort_column() -> None:
+    app = demo_app()
+    async with app.run_test(size=(110, 32)) as pilot:
+        await pilot.press("right", "right", "right")
+        table = app.query_one(FleetTable)
+        assert table.cursor_column == _COLUMN_INDEX["cpu"]
+        await pilot.press("s")
+        assert "▲" in str(table.columns["cpu"].label)
+        await pilot.press("left")
+        assert table.cursor_column == _COLUMN_INDEX["load1"]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+async def test_sort_updates_after_poll_and_preserves_selection(reverse: bool) -> None:
+    hosts = (HostSpec("z", "z.test"), HostSpec("a", "a.test"))
+    prober = StubProber({"z": stub_success(20), "a": stub_success(80)})
+    app = FleetApp(Settings(Defaults(interval=3600), hosts), prober)
+
+    async with app.run_test() as pilot:
+        assert await wait_until(lambda: app._online_count == 2)
+        await pilot.pause()
+        table = app.query_one(FleetTable)
+        assert [table.get_row_at(i)[0].plain for i in range(2)] == ["a", "z"]
+        assert "▲" in str(table.columns["host"].label)
+        app._sort_by_column("mem")
+        if reverse:
+            app._sort_by_column("mem")
+        selected = table.selected_host()
+        prober.results = {"z": stub_success(90), "a": stub_success(10)}
+        await app._run_cycle()
+
+        values = [sort_value_at(table, i, _COLUMN_INDEX["mem"]) for i in range(2)]
+        assert values == sorted(values, reverse=reverse)
+        assert table.selected_host() == selected
+
+
+@pytest.mark.parametrize("overlay", ["enter", "?"])
+async def test_poll_while_overlay_is_open(overlay: str) -> None:
+    hosts = demo_hosts()[:2]
+    prober = StubProber({host.name: stub_success(20) for host in hosts})
+    app = FleetApp(Settings(Defaults(interval=3600), hosts), prober)
+    async with app.run_test() as pilot:
+        assert await wait_until(lambda: app._online_count == 2)
+        await pilot.press(overlay)
+        prober.results = {host.name: stub_success(80) for host in hosts}
+        await app._run_cycle()
+        await pilot.press("escape")
+        table = app.query_one(FleetTable)
+        assert table.get_row(hosts[0].name)[_COLUMN_INDEX["mem"]].plain == "80%"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -62,6 +63,10 @@ def load_settings(path: str | Path) -> Settings:
         payload = tomllib.loads(config_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         raise ConfigError(f"config file not found: {config_path}") from None
+    except OSError as exc:
+        raise ConfigError(f"cannot read config file {config_path}: {exc.strerror}") from exc
+    except UnicodeError as exc:
+        raise ConfigError(f"config file must be UTF-8: {config_path}") from exc
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"invalid TOML in {config_path}: {exc}") from exc
     return settings_from_mapping(payload)
@@ -193,8 +198,13 @@ def _optional_string(data: dict[str, Any], key: str) -> str | None:
 
 def _positive_number(data: dict[str, Any], key: str, *, default: float) -> float:
     value = data.get(key, default)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-        raise ConfigError(f"[defaults].{key} must be a positive number, got {value!r}")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+    ):
+        raise ConfigError(f"[defaults].{key} must be a finite positive number, got {value!r}")
     return float(value)
 
 
